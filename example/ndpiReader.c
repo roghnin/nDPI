@@ -19,6 +19,7 @@
  * along with nDPI.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
+//modified by hs.
 
 #ifdef linux
 #define _GNU_SOURCE
