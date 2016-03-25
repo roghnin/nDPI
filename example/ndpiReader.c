@@ -19,7 +19,6 @@
  * along with nDPI.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
-//modified by hs.
 
 #ifdef linux
 #define _GNU_SOURCE
@@ -652,11 +651,9 @@ static u_int16_t node_guess_undetected_protocol(u_int16_t thread_id, struct ndpi
 static void node_proto_guess_walker(const void *node, ndpi_VISIT which, int depth, void *user_data) {
   struct ndpi_flow *flow = *(struct ndpi_flow **) node;
   u_int16_t thread_id = *((u_int16_t *) user_data);
+  struct ndpi_id_struct *ip_printer = NULL;//hs
 
   if((which == ndpi_preorder) || (which == ndpi_leaf)) { /* Avoid walking the same node multiple times */
-    if((!flow->detection_completed) && flow->ndpi_flow)
-      flow->detected_protocol = ndpi_detection_giveup(ndpi_thread_info[0].ndpi_struct, flow->ndpi_flow);
-
     if(enable_protocol_guess) {
       if(flow->detected_protocol.protocol == NDPI_PROTOCOL_UNKNOWN) {
 	node_guess_undetected_protocol(thread_id, flow);
@@ -667,6 +664,8 @@ static void node_proto_guess_walker(const void *node, ndpi_VISIT which, int dept
     ndpi_thread_info[thread_id].stats.protocol_counter[flow->detected_protocol.protocol]       += flow->packets;
     ndpi_thread_info[thread_id].stats.protocol_counter_bytes[flow->detected_protocol.protocol] += flow->bytes;
     ndpi_thread_info[thread_id].stats.protocol_flows[flow->detected_protocol.protocol]++;
+    //hs:
+    printf("upper : %s , %d \n",inet_ntoa(*(struct in_addr *)&flow->upper_ip),flow->upper_port);
   }
 }
 
@@ -1087,9 +1086,6 @@ static unsigned int packet_processing(u_int16_t thread_id,
       snprintf(flow->ssl.client_certificate, sizeof(flow->ssl.client_certificate), "%s", flow->ndpi_flow->protos.ssl.client_certificate);
       snprintf(flow->ssl.server_certificate, sizeof(flow->ssl.server_certificate), "%s", flow->ndpi_flow->protos.ssl.server_certificate);
     }
-
-    if(flow->detected_protocol.protocol == NDPI_PROTOCOL_UNKNOWN)
-      flow->detected_protocol = ndpi_detection_giveup(ndpi_thread_info[thread_id].ndpi_struct, flow->ndpi_flow);
 
     free_ndpi_flow(flow);
 
