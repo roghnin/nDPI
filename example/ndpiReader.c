@@ -87,6 +87,9 @@
 /* mask for Bad FCF presence */
 #define BAD_FCS                         0x50    /* 0101 0000 */
 
+/* ip addr container*///hs
+#define MAX_IP_AMOUNT 64
+
 /**
  * @brief Set main components necessary to the detection
  * @details TODO
@@ -134,6 +137,11 @@ static time_t capture_until = 0;
 
 static u_int32_t num_flows;
 
+typedef struct IP_Container {//hs:
+	u_int32_t amount;
+	u_int32_t ip_addresses[MAX_IP_AMOUNT];
+}IP_Container;
+
 struct thread_stats {
   u_int32_t guessed_flow_protocols;
   u_int64_t raw_packet_count;
@@ -147,6 +155,7 @@ struct thread_stats {
   u_int64_t mpls_count, pppoe_count, vlan_count, fragmented_count;
   u_int64_t packet_len[6];
   u_int16_t max_packet_len;
+  IP_Container ip_containers[NDPI_MAX_SUPPORTED_PROTOCOLS + NDPI_MAX_NUM_CUSTOM_PROTOCOLS + 1];//hs
 };
 
 struct reader_thread {
@@ -209,6 +218,31 @@ typedef struct ndpi_flow {
 
 
 static u_int32_t size_flow_struct = 0;
+//hs:
+static int IPIsInContainer(IP_Container *ip_container, u_int32_t ip){
+	u_int32_t i;
+	for (i=0;i<ip_container->amount;i++){
+		if (ip==ip_container->ip_addresses[i]){
+			return 1;
+		}
+	}
+	return 0;
+}
+static void IPIntoContainer(IP_Container *ip_container, u_int32_t ip){
+	if (!IPIsInContainer(ip_container,ip)){
+		if (ip_container->amount<=MAX_IP_AMOUNT){
+			ip_container->ip_addresses[ip_container->amount]=ip;
+			ip_container->amount++;
+		}
+	}
+}
+static void MergeIPContainer(IP_Container *con_a, IP_Container *con_b){
+	//merging con_b into con_a.
+	u_int32_t i;
+	for (i=0;i<con_b->amount;i++){
+		IPIntoContainer(con_a,con_b->ip_addresses[i]);
+	}
+}
 
 static void help(u_int long_help) {
   printf("ndpiReader -i <file|device> [-f <filter>][-s <duration>]\n"
@@ -657,13 +691,14 @@ static void node_proto_guess_walker(const void *node, ndpi_VISIT which, int dept
     if(enable_protocol_guess) {
       if(flow->detected_protocol.protocol == NDPI_PROTOCOL_UNKNOWN) {
 	node_guess_undetected_protocol(thread_id, flow);
-	// printFlow(thread_id, flow);
+	//printFlow(thread_id, flow);//hs:not working so well considering the ip addresses.
       }
     }
 
     ndpi_thread_info[thread_id].stats.protocol_counter[flow->detected_protocol.protocol]       += flow->packets;
     ndpi_thread_info[thread_id].stats.protocol_counter_bytes[flow->detected_protocol.protocol] += flow->bytes;
     ndpi_thread_info[thread_id].stats.protocol_flows[flow->detected_protocol.protocol]++;
+    IPIntoContainer(&(ndpi_thread_info[thread_id].stats.ip_containers[flow->detected_protocol.protocol]),flow->upper_ip);//hs
     //hs:
     printf("upper : %s , %d \n",inet_ntoa(*(struct in_addr *)&flow->upper_ip),flow->upper_port);
   }
@@ -1210,6 +1245,7 @@ char* formatBytes(u_int32_t howMuch, char *buf, u_int buf_len) {
 
 static void printResults(u_int64_t tot_usec) {
   u_int32_t i;
+  u_int32_t j;//hs
   u_int64_t total_flow_bytes = 0;
   u_int avg_pkt_size = 0;
   struct thread_stats cumulative_stats;
@@ -1241,6 +1277,18 @@ static void printResults(u_int64_t tot_usec) {
       cumulative_stats.protocol_counter[i] += ndpi_thread_info[thread_id].stats.protocol_counter[i];
       cumulative_stats.protocol_counter_bytes[i] += ndpi_thread_info[thread_id].stats.protocol_counter_bytes[i];
       cumulative_stats.protocol_flows[i] += ndpi_thread_info[thread_id].stats.protocol_flows[i];
+      //hs:
+      //merge the IPcontainers in the threads into the cumulative stats.
+      //--which is actually meaningless when there is only one thread[0].
+      //but anyway, i'm doing this to keep the integrity of the source.
+      if(ndpi_thread_info[thread_id].stats.ip_containers[i].amount){
+    	  MergeIPContainer(&cumulative_stats.ip_containers[i],&ndpi_thread_info[thread_id].stats.ip_containers[i]);
+		  //printf("hs: observing i= %d in thread : %d , with ip amount: %d \n",i,thread_id,ndpi_thread_info[thread_id].stats.ip_containers[i].amount);
+    	  printf("after merge:container %d from thread %d :\n",i,thread_id);
+    	  for (j=0; j<cumulative_stats.ip_containers[i].amount;j++){
+			  printf("\t%s\n",inet_ntoa(*(struct in_addr *)&cumulative_stats.ip_containers[i].ip_addresses[j]));
+		  }
+      }
     }
 
     cumulative_stats.ndpi_flow_count += ndpi_thread_info[thread_id].stats.ndpi_flow_count;
@@ -1355,13 +1403,18 @@ static void printResults(u_int64_t tot_usec) {
     if(cumulative_stats.protocol_counter[i] > 0) {
       breed_stats[breed] += (long long unsigned int)cumulative_stats.protocol_counter_bytes[i];
 
-      if(results_file)
-	fprintf(results_file, "%s\t%llu\t%llu\t%u\n",
+      if(results_file){
+	fprintf(results_file, "%s\t%llu\t%llu\t%u\t%u\n",
 		ndpi_get_proto_name(ndpi_thread_info[0].ndpi_struct, i),
 		(long long unsigned int)cumulative_stats.protocol_counter[i],
 		(long long unsigned int)cumulative_stats.protocol_counter_bytes[i],
-		cumulative_stats.protocol_flows[i]);
-
+		cumulative_stats.protocol_flows[i],
+		cumulative_stats.ip_containers[i].amount);//hs: add the amount of ip address in the end.
+	//hs:output all the ip addrs:
+	for (j=0;j<cumulative_stats.ip_containers[i].amount;j++){
+		fprintf(results_file,"%s\n",inet_ntoa(*(struct in_addr *)&cumulative_stats.ip_containers[i].ip_addresses[j]));
+	}
+      }
       if((!json_flag) && (!quiet_mode)) {
 	printf("\t%-20s packets: %-13llu bytes: %-13llu "
 	       "flows: %-13u\n",
