@@ -1412,8 +1412,10 @@ static void printResults(u_int64_t tot_usec) {
 		cumulative_stats.ip_containers[i].amount);//hs: add the amount of ip address in the end.
 	//hs:output all the ip addrs:
 	for (j=0;j<cumulative_stats.ip_containers[i].amount;j++){
-		fprintf(results_file,"%s\n",inet_ntoa(*(struct in_addr *)&cumulative_stats.ip_containers[i].ip_addresses[j]));
+		fprintf(results_file,"%s",inet_ntoa(*(struct in_addr *)&cumulative_stats.ip_containers[i].ip_addresses[j]));
+		if (j<cumulative_stats.ip_containers[i].amount-1) fprintf(results_file,",");
 	}
+	fprintf(results_file,"\n");
       }
       if((!json_flag) && (!quiet_mode)) {
 	printf("\t%-20s packets: %-13llu bytes: %-13llu "
