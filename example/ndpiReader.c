@@ -698,9 +698,11 @@ static void node_proto_guess_walker(const void *node, ndpi_VISIT which, int dept
     ndpi_thread_info[thread_id].stats.protocol_counter[flow->detected_protocol.protocol]       += flow->packets;
     ndpi_thread_info[thread_id].stats.protocol_counter_bytes[flow->detected_protocol.protocol] += flow->bytes;
     ndpi_thread_info[thread_id].stats.protocol_flows[flow->detected_protocol.protocol]++;
-    IPIntoContainer(&(ndpi_thread_info[thread_id].stats.ip_containers[flow->detected_protocol.protocol]),flow->upper_ip);//hs
     //hs:
+    IPIntoContainer(&(ndpi_thread_info[thread_id].stats.ip_containers[flow->detected_protocol.protocol]),flow->upper_ip);
+    IPIntoContainer(&(ndpi_thread_info[thread_id].stats.ip_containers[flow->detected_protocol.protocol]),flow->lower_ip);
     printf("upper : %s , %d \n",inet_ntoa(*(struct in_addr *)&flow->upper_ip),flow->upper_port);
+    printf("lower : %s , %d \n",inet_ntoa(*(struct in_addr *)&flow->lower_ip),flow->lower_port);
   }
 }
 
