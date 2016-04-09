@@ -218,7 +218,8 @@ typedef struct ndpi_flow {
 
 
 static u_int32_t size_flow_struct = 0;
-//hs:
+
+//hs below:
 static int IPIsInContainer(IP_Container *ip_container, u_int32_t ip){
 	u_int32_t i;
 	for (i=0;i<ip_container->amount;i++){
@@ -228,8 +229,19 @@ static int IPIsInContainer(IP_Container *ip_container, u_int32_t ip){
 	}
 	return 0;
 }
+static int IPIsInLan(u_int32_t ip){
+	u_int32_t first4, second4;
+	first4=ip&255;
+	second4=(ip&65535)>>8;
+	//printf("first: %d, second:%d \n",first4,second4);
+	if (first4==192 && second4==168){//just in 192.168 case, to be extended later.
+		//printf("filtered ip: %s\n",inet_ntoa(*(struct in_addr *)&ip));
+		return 1;
+	}
+	return 0;
+}
 static void IPIntoContainer(IP_Container *ip_container, u_int32_t ip){
-	if (!IPIsInContainer(ip_container,ip)){
+	if (!IPIsInContainer(ip_container,ip) && !IPIsInLan(ip)){
 		if (ip_container->amount<=MAX_IP_AMOUNT){
 			ip_container->ip_addresses[ip_container->amount]=ip;
 			ip_container->amount++;
@@ -243,6 +255,7 @@ static void MergeIPContainer(IP_Container *con_a, IP_Container *con_b){
 		IPIntoContainer(con_a,con_b->ip_addresses[i]);
 	}
 }
+//hs above.
 
 static void help(u_int long_help) {
   printf("ndpiReader -i <file|device> [-f <filter>][-s <duration>]\n"
